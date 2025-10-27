@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teste Checkout PIX</title>
+</head>
+<body>
+<h2>Checkout PIX - Teste Local</h2>
+<p>Valor fixo: R$19,90</p>
+<button id="gerar">Gerar PIX</button>
+<pre id="pix"></pre>
+
+<script>
+const BASE_URL = "http://127.0.0.1:5000"; // backend local
+
+document.getElementById("gerar").addEventListener("click", async () => {
+  const valor = 19.90;
+  try {
+    const res = await fetch(`${BASE_URL}/gerar_pix/${valor}`);
+    const data = await res.json();
+
+    if (data.copia_cola) {
+      document.getElementById("pix").textContent = data.copia_cola;
+
+      // Copia automaticamente para o clipboard
+      await navigator.clipboard.writeText(data.copia_cola);
+
+      alert("PIX gerado e copiado para o clipboard!");
+    } else {
+      alert(data.error || "Erro ao gerar PIX");
+    }
+  } catch (err) {
+    console.error(err);
+    alert("Erro ao se comunicar com o backend");
+  }
+});
+</script>
+</body>
+</html>
