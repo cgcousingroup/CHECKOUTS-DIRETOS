@@ -17,7 +17,6 @@ with open("pix.json", "r", encoding="utf-8") as f:
 def git_push():
     """Executa git add, commit e push de forma assíncrona"""
     try:
-        # Mensagem de commit com timestamp (para evitar conflitos)
         msg = f"Atualização automática {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         subprocess.run(["git", "add", "pix.json"], check=True)
         subprocess.run(["git", "commit", "-m", msg], check=True)
@@ -32,26 +31,27 @@ def git_push():
 @app.route("/gerar_pix/<float:valor>", methods=["GET"])
 def gerar_pix(valor):
     with lock:
-        for bloco in pix_data:
-            if "codigos" in bloco and isinstance(bloco["codigos"], list):
-                for i, item in enumerate(bloco["codigos"]):
-                    try:
-                        if float(item["valor"]) == float(valor):
-                            codigo = item["codigo"]
+        if "codigos" not in pix_data or not isinstance(pix_data["codigos"], list):
+            return jsonify({"error": "Formato inválido em pix.json"}), 500
 
-                            # Remove o PIX usado
-                            bloco["codigos"].pop(i)
+        for i, item in enumerate(pix_data["codigos"]):
+            try:
+                if float(item["valor"]) == float(valor):
+                    codigo = item["codigo"]
 
-                            # Atualiza o JSON local
-                            with open("pix.json", "w", encoding="utf-8") as f:
-                                json.dump(pix_data, f, indent=2, ensure_ascii=False)
+                    # Remove o PIX usado
+                    pix_data["codigos"].pop(i)
 
-                            # Faz push no Git em segundo plano
-                            threading.Thread(target=git_push).start()
+                    # Atualiza o arquivo JSON local
+                    with open("pix.json", "w", encoding="utf-8") as f:
+                        json.dump(pix_data, f, indent=2, ensure_ascii=False)
 
-                            return jsonify({"copia_cola": codigo})
-                    except (ValueError, TypeError):
-                        continue
+                    # Faz o push no Git (em segundo plano)
+                    threading.Thread(target=git_push).start()
+
+                    return jsonify({"copia_cola": codigo})
+            except (ValueError, TypeError):
+                continue
 
         return jsonify({"error": "Nenhum PIX disponível"}), 404
 
@@ -59,11 +59,10 @@ def gerar_pix(valor):
 @app.route("/status", methods=["GET"])
 def status():
     contagem = {}
-    for bloco in pix_data:
-        if "codigos" in bloco and isinstance(bloco["codigos"], list):
-            for item in bloco["codigos"]:
-                v = float(item.get("valor", 0))
-                contagem[v] = contagem.get(v, 0) + 1
+    if "codigos" in pix_data and isinstance(pix_data["codigos"], list):
+        for item in pix_data["codigos"]:
+            v = float(item.get("valor", 0))
+            contagem[v] = contagem.get(v, 0) + 1
     return jsonify(contagem)
 
 
