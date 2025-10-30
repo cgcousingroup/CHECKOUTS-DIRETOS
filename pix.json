@@ -1,9 +1,10 @@
-{
-  "codigos": [
-    {
-      "valor": 20.90,
-      "codigo": "00020101021226810014br.gov.bcb.pix2559qr.woovi.com/qr/v2/cob/ba9d06d2-117f-4d15-8f1a-a265430a03a6520400005303986540520.905802BR5908SYNC_PAY6009Sao_Paulo62290525fe617b80cc904dfeab647b943630493E9"
-    }
-  ]
-}
-
+[
+  {
+    "codigos": [
+      {
+        "valor": 20.90,
+        "codigo": "00020101021226810014br.gov.bcb.pix2559qr.woovi.com/qr/v2/cob/ba9d06d2-117f-4d15-8f1a-a265430a03a6520400005303986540520.905802BR5908SYNC_PAY6009Sao_Paulo62290525fe617b80cc904dfeab647b943630493E9"
+      }
+    ]
+  }
+]
