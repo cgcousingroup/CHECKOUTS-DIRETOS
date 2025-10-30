@@ -1,0 +1,25 @@
+name: Atualizar pix.json
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  atualizar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Atualizar pix.json (se existir localmente)
+        run: |
+          if [ -f pix.json ]; then
+            git config --global user.email "bot@github.com"
+            git config --global user.name "Pix Bot"
+            git add pix.json
+            git commit -m "Atualização automática de pix.json" || echo "Sem alterações"
+            git push
+          fi
