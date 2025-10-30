@@ -5,6 +5,10 @@ import threading
 import requests
 import base64
 import os
+from dotenv import load_dotenv  # 👈 Importa suporte a .env
+
+# === Carrega variáveis do arquivo .env ===
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
@@ -14,9 +18,10 @@ lock = threading.Lock()
 GITHUB_REPO = "cgcousingroup/CHECKOUTS-DIRETOS"
 GITHUB_FILE_PATH = "pix.json"
 GITHUB_BRANCH = "main"
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")  # variável de ambiente com o token
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")  # variável do .env
 
 print("🔍 Token detectado:", "SIM" if GITHUB_TOKEN else "NÃO")
+
 
 def carregar_pix():
     """Carrega o pix.json e valida a estrutura."""
@@ -25,8 +30,11 @@ def carregar_pix():
             data = json.load(f)
             if isinstance(data, list):
                 return data
+            elif isinstance(data, dict) and "codigos" in data:
+                # converte para lista de blocos para compatibilidade
+                return [data]
             else:
-                print("⚠️ O arquivo pix.json não é uma lista válida.")
+                print("⚠️ O arquivo pix.json não é uma estrutura válida.")
                 return []
     except Exception as e:
         print("⚠️ Erro ao carregar pix.json:", e)
@@ -43,8 +51,17 @@ def atualizar_github():
             conteudo = f.read()
 
         url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}"
-        headers = {"Authorization": f"Bearer {GITHUB_TOKEN}"}
+        headers = {
+            "Authorization": f"Bearer {GITHUB_TOKEN}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+
+        # obtém o SHA atual do arquivo remoto
         resp = requests.get(url, headers=headers)
+        if resp.status_code != 200:
+            print("⚠️ Erro ao buscar SHA:", resp.text)
+            return
+
         sha = resp.json().get("sha")
 
         data = {
@@ -109,6 +126,3 @@ def index():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
-
-
-
