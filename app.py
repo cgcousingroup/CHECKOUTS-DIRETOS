@@ -16,6 +16,7 @@ GITHUB_FILE_PATH = "pix.json"
 GITHUB_BRANCH = "main"
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")  # variável de ambiente com o token
 
+print("🔍 Token detectado:", "SIM" if GITHUB_TOKEN else "NÃO")
 
 def carregar_pix():
     """Carrega o pix.json e valida a estrutura."""
@@ -108,5 +109,6 @@ def index():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
+
 
 
