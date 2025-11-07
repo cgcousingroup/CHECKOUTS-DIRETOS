@@ -1,11 +1,14 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import requests
-from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
 import traceback
 
 app = Flask(__name__)
 CORS(app)
+
+@app.route("/")
+def home():
+    return jsonify({"status": "API online 🚀"})
 
 @app.route("/gerar_pix", methods=["POST"])
 def gerar_pix():
@@ -16,65 +19,42 @@ def gerar_pix():
         if not link_id:
             return jsonify({"success": False, "error": "link_id obrigatório"}), 400
 
-        # URL do pagamento Sync
         link_sync = f"https://app.syncpayments.com.br/payment-link/{link_id}"
-        session = requests.Session()
 
-        # Cabeçalhos básicos para simular navegador
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                          "(KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
-            "Accept-Language": "pt-BR,pt;q=0.9",
-        }
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            print("Acessando:", link_sync)
+            page.goto(link_sync, wait_until="networkidle")
 
-        # 1️⃣ Pega o HTML da página inicial
-        resp = session.get(link_sync, headers=headers, timeout=30)
-        if resp.status_code != 200:
-            return jsonify({"success": False, "error": "Não foi possível acessar o link Sync"}), 400
+            # Preenche os inputs obrigatórios
+            page.wait_for_selector("input[name='clientName']", timeout=60000)
+            page.fill("input[name='clientName']", "João da Silva")
 
-        soup = BeautifulSoup(resp.text, "html.parser")
+            page.wait_for_selector("input[name='clientEmail']", timeout=60000)
+            page.fill("input[name='clientEmail']", "teste@example.com")
 
-        # 2️⃣ Extrai o token hidden se houver (ex: CSRF ou outros)
-        # Exemplo:
-        csrf_token = ""
-        token_input = soup.find("input", {"name": "csrfToken"})
-        if token_input:
-            csrf_token = token_input.get("value", "")
+            page.wait_for_selector("input[name='clientCpf']", timeout=60000)
+            page.fill("input[name='clientCpf']", "12345678909")
 
-        # 3️⃣ Monta payload para envio dos dados do cliente
-        payload = {
-            "clientName": "João da Silva",
-            "clientEmail": "teste@example.com",
-            "clientCpf": "12345678909",
-        }
-        if csrf_token:
-            payload["csrfToken"] = csrf_token
+            # Clica no botão "Gerar QR Code"
+            page.wait_for_selector("button.sc-a13bbfcf-0.dmUMuK", timeout=60000)
+            page.click("button.sc-a13bbfcf-0.dmUMuK")
 
-        # 4️⃣ Envia POST simulando clique no botão "Gerar QR Code"
-        post_headers = headers.copy()
-        post_headers.update({
-            "Content-Type": "application/x-www-form-urlencoded",
-        })
+            # Espera o campo com o PIX aparecer
+            page.wait_for_selector("input.sc-7620743a-4.jMaHJs", timeout=60000)
+            pix_code = page.get_attribute("input.sc-7620743a-4.jMaHJs", "value")
 
-        post_resp = session.post(link_sync, headers=post_headers, data=payload, timeout=30)
-        if post_resp.status_code != 200:
-            return jsonify({"success": False, "error": "Erro ao enviar os dados do cliente"}), 400
+            browser.close()
 
-        # 5️⃣ Pega o HTML final e extrai o código PIX
-        final_soup = BeautifulSoup(post_resp.text, "html.parser")
-        pix_input = final_soup.find("input", {"class": "sc-7620743a-4 jMaHJs"})
+            if not pix_code:
+                return jsonify({"success": False, "error": "Campo de PIX encontrado, mas sem valor."}), 400
 
-        if not pix_input or not pix_input.get("value"):
-            return jsonify({"success": False, "error": "Não foi possível encontrar o PIX no HTML"}), 400
-
-        pix_code = pix_input["value"]
-
-        return jsonify({"success": True, "pix_code": pix_code})
+            return jsonify({"success": True, "pix_code": pix_code})
 
     except Exception as e:
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
-
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000)
