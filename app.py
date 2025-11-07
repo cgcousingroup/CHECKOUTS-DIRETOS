@@ -1,14 +1,14 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 from playwright.sync_api import sync_playwright
 import traceback
 
-app = Flask(__name__, template_folder="templates")
-CORS(app)
+app = Flask(__name__)
+CORS(app)  # Permite chamadas de qualquer origem (ex: Hostinger)
 
 @app.route("/")
-def index():
-    return render_template("index.html")
+def home():
+    return jsonify({"message": "Servidor ativo ✅"})
 
 @app.route("/gerar_pix", methods=["POST"])
 def gerar_pix():
@@ -27,30 +27,23 @@ def gerar_pix():
             print("Acessando:", link_sync)
             page.goto(link_sync, wait_until="networkidle")
 
-            # Espera os inputs aparecerem
             page.wait_for_selector("input[name='clientName']", timeout=60000)
             page.wait_for_selector("input[name='clientEmail']", timeout=60000)
             page.wait_for_selector("input[name='clientCpf']", timeout=60000)
 
-            # Preenche os dados
             page.fill("input[name='clientName']", "João da Silva")
             page.fill("input[name='clientEmail']", "teste@example.com")
             page.fill("input[name='clientCpf']", "12345678909")
 
-            # Clica no botão "Gerar QR Code"
-            page.wait_for_selector("button.sc-a13bbfcf-0.dmUMuK", timeout=60000)
             page.click("button.sc-a13bbfcf-0.dmUMuK")
 
-            # Espera o campo com o código Pix aparecer
             page.wait_for_selector("input.sc-7620743a-4.jMaHJs", timeout=60000)
-
-            # Pega o valor do campo (é o código PIX)
             pix_code = page.get_attribute("input.sc-7620743a-4.jMaHJs", "value")
 
             browser.close()
 
             if not pix_code:
-                return jsonify({"success": False, "error": "Campo de PIX encontrado, mas sem valor."}), 400
+                return jsonify({"success": False, "error": "Campo PIX sem valor."}), 400
 
             return jsonify({"success": True, "pix_code": pix_code})
 
@@ -60,6 +53,4 @@ def gerar_pix():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
-
-
+    app.run(host="0.0.0.0", port=8080)
