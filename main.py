@@ -2,7 +2,6 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from playwright.sync_api import sync_playwright
 import traceback
-import os
 
 app = Flask(__name__)
 CORS(app)
@@ -60,6 +59,5 @@ def gerar_pix():
         return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))  # Railway define a porta
-    app.run(host="0.0.0.0", port=port)
-
+    # Força a porta 5000, igual ao seu domínio antigo
+    app.run(host="0.0.0.0", port=5000)
