@@ -5,7 +5,7 @@ from playwright.sync_api import sync_playwright
 app = Flask(__name__)
 CORS(app)
 
-@app.route("/", methods=["GET"])
+@app.route("/", methods=["POST"])
 def home():
     return jsonify({"status": "API online 🚀"})
 
@@ -49,3 +49,4 @@ def gerar_pix():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
+
