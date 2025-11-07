@@ -1,128 +1,74 @@
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, request, jsonify
 from flask_cors import CORS
-import json
-import threading
-import requests
-import base64
-import os
-from dotenv import load_dotenv  # 👈 Importa suporte a .env
-
-# === Carrega variáveis do arquivo .env ===
-load_dotenv()
+import asyncio
+import re
+from playwright.async_api import async_playwright
 
 app = Flask(__name__)
 CORS(app)
-lock = threading.Lock()
 
-# === Configuração do repositório GitHub ===
-GITHUB_REPO = "cgcousingroup/CHECKOUTS-DIRETOS"
-GITHUB_FILE_PATH = "pix.json"
-GITHUB_BRANCH = "main"
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")  # variável do .env
+# Função assíncrona que faz o scraping da SyncPay
+async def obter_pix_syncpay(link_syncpay: str):
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            viewport={"width": 1366, "height": 768},
+        )
+        page = await context.new_page()
+        await page.goto(link_syncpay, wait_until="networkidle")
 
-print("🔍 Token detectado:", "SIM" if GITHUB_TOKEN else "NÃO")
+        # Espera o QR Code aparecer
+        await page.wait_for_selector("img[src^='data:image/png;base64,']", timeout=15000)
+        qr_img = await page.query_selector("img[src^='data:image/png;base64,']")
+        qr_code_base64 = await qr_img.get_attribute("src")
+
+        # Extrai o código Pix (copia e cola)
+        html = await page.content()
+        match = re.search(r"0002010102.*?6304[0-9A-Fa-f]{4}", html)
+        pix_code = match.group(0) if match else None
+
+        await browser.close()
+
+        if not pix_code or not qr_code_base64:
+            return None
+        return {"pix_code": pix_code, "qrcode_base64": qr_code_base64}
 
 
-def carregar_pix():
-    """Carrega o pix.json e valida a estrutura."""
+@app.route("/gerar_pix", methods=["POST"])
+def gerar_pix():
+    """Recebe link_id e valor do front, gera o QR da SyncPay e retorna JSON."""
+    data = request.get_json()
+    link_id = data.get("link_id")
+    valor = data.get("valor")
+
+    if not link_id:
+        return jsonify({"success": False, "error": "link_id não informado"}), 400
+
+    link_syncpay = f"https://syncpay.com/pay/{link_id}"
+    print(f"🔗 Gerando PIX via {link_syncpay}")
+
     try:
-        with open("pix.json", "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if isinstance(data, list):
-                return data
-            elif isinstance(data, dict) and "codigos" in data:
-                # converte para lista de blocos para compatibilidade
-                return [data]
-            else:
-                print("⚠️ O arquivo pix.json não é uma estrutura válida.")
-                return []
-    except Exception as e:
-        print("⚠️ Erro ao carregar pix.json:", e)
-        return []
+        resultado = asyncio.run(obter_pix_syncpay(link_syncpay))
+        if not resultado:
+            return jsonify({"success": False, "error": "Não foi possível obter PIX da SyncPay"}), 500
 
-
-pix_data = carregar_pix()
-
-
-def atualizar_github():
-    """Envia o pix.json atualizado para o GitHub via API."""
-    try:
-        with open(GITHUB_FILE_PATH, "r", encoding="utf-8") as f:
-            conteudo = f.read()
-
-        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}"
-        headers = {
-            "Authorization": f"Bearer {GITHUB_TOKEN}",
-            "Accept": "application/vnd.github.v3+json"
-        }
-
-        # obtém o SHA atual do arquivo remoto
-        resp = requests.get(url, headers=headers)
-        if resp.status_code != 200:
-            print("⚠️ Erro ao buscar SHA:", resp.text)
-            return
-
-        sha = resp.json().get("sha")
-
-        data = {
-            "message": "Atualização automática via servidor Flask",
-            "content": base64.b64encode(conteudo.encode("utf-8")).decode("utf-8"),
-            "branch": GITHUB_BRANCH,
-            "sha": sha
-        }
-
-        r = requests.put(url, headers=headers, json=data)
-        if r.status_code in (200, 201):
-            print("✅ pix.json atualizado no GitHub com sucesso!")
-        else:
-            print("⚠️ Falha ao atualizar no GitHub:", r.text)
+        print("✅ PIX gerado com sucesso!")
+        return jsonify({"success": True, **resultado})
 
     except Exception as e:
-        print("⚠️ Erro ao enviar para o GitHub:", e)
-
-
-@app.route("/gerar_pix/<float:valor>", methods=["GET"])
-def gerar_pix(valor):
-    with lock:
-        global pix_data
-        for bloco in pix_data:
-            if isinstance(bloco, dict) and "codigos" in bloco and isinstance(bloco["codigos"], list):
-                for i, item in enumerate(bloco["codigos"]):
-                    try:
-                        if float(item.get("valor", 0)) == float(valor):
-                            codigo = item.get("codigo")
-                            bloco["codigos"].pop(i)
-
-                            with open("pix.json", "w", encoding="utf-8") as f:
-                                json.dump(pix_data, f, indent=2, ensure_ascii=False)
-
-                            threading.Thread(target=atualizar_github).start()
-
-                            return jsonify({"copia_cola": codigo})
-                    except (ValueError, TypeError):
-                        continue
-
-        return jsonify({"error": "Nenhum PIX disponível"}), 404
-
-
-@app.route("/status", methods=["GET"])
-def status():
-    contagem = {}
-    for bloco in pix_data:
-        if isinstance(bloco, dict) and "codigos" in bloco and isinstance(bloco["codigos"], list):
-            for item in bloco["codigos"]:
-                try:
-                    v = float(item.get("valor", 0))
-                    contagem[v] = contagem.get(v, 0) + 1
-                except (ValueError, TypeError):
-                    continue
-    return jsonify(contagem)
+        print("❌ Erro:", e)
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/")
-def index():
-    return send_from_directory(".", "index.html")
+def home():
+    return jsonify({"status": "Servidor SyncPay ativo 🚀"})
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000)
