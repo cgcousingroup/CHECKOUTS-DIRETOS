@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 app = Flask(__name__)
 CORS(app)
 
-@app.route("/gerar_pix", methods=["POST"])
+@app.route("/gerar_pix", methods=["GET"])
 def gerar_pix():
     try:
         data = request.get_json()
@@ -50,3 +50,4 @@ def gerar_pix():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+
