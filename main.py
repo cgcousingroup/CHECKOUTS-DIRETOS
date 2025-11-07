@@ -5,7 +5,7 @@ import traceback
 import os
 
 app = Flask(__name__)
-CORS(app, origins="https://cousinpay.com.br")  # permite que qualquer front possa chamar a API
+CORS(app, resources={r"/*": {"origins": "*"}}) # permite que qualquer front possa chamar a API
 
 @app.route("/gerar_pix", methods=["POST"])
 def gerar_pix():
@@ -52,5 +52,6 @@ def gerar_pix():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
+
 
 
