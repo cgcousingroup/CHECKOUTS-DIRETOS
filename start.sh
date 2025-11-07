@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Garante que os navegadores estão instalados
-playwright install
+# Instala o Chromium necessário para o Playwright
+playwright install chromium
 
 # Inicia a aplicação Flask
 python main.py
