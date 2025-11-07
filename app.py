@@ -1,86 +1,63 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
-import asyncio
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
+from playwright.sync_api import sync_playwright
+import traceback
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder="templates")
 CORS(app)
 
-# === Função principal que faz o scrap ===
-async def obter_pix_syncpay(link_syncpay: str):
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                       "AppleWebKit/537.36 (KHTML, like Gecko) "
-                       "Chrome/120.0.0.0 Safari/537.36",
-            viewport={"width": 1366, "height": 768},
-        )
-        page = await context.new_page()
-        await page.goto(link_syncpay, wait_until="networkidle")
-
-        # Espera o elemento do QR Code aparecer
-        try:
-            await page.wait_for_selector("img[src^='data:image/png;base64,']", timeout=15000)
-            qr_img = await page.query_selector("img[src^='data:image/png;base64,']")
-            qr_code_base64 = await qr_img.get_attribute("src")
-        except PlaywrightTimeout:
-            qr_code_base64 = None
-
-        # === Captura o PIX dentro da classe que você mencionou ===
-        try:
-            await page.wait_for_selector(".sc-7620743a-4.jMaHJs", timeout=15000)
-            pix_element = await page.query_selector(".sc-7620743a-4.jMaHJs")
-            pix_code = await pix_element.inner_text()
-        except PlaywrightTimeout:
-            pix_code = None
-
-        # Fecha tudo
-        await browser.close()
-
-        # Verificação final
-        if not pix_code:
-            print("❌ Não foi possível capturar o código Pix na classe informada.")
-            return None
-
-        return {
-            "pix_code": pix_code.strip(),
-            "qrcode_base64": qr_code_base64
-        }
-
+@app.route("/")
+def index():
+    return render_template("index.html")
 
 @app.route("/gerar_pix", methods=["POST"])
 def gerar_pix():
-    data = request.get_json()
-    link_id = data.get("link_id")
-
-    if not link_id:
-        return jsonify({"success": False, "error": "link_id não informado"}), 400
-
-    link_syncpay = f"https://app.syncpayments.com.br/payment-link{link_id}"
-    print(f"🔗 Acessando {link_syncpay}")
-
     try:
-        resultado = asyncio.run(obter_pix_syncpay(link_syncpay))
-        if not resultado:
-            return jsonify({
-                "success": False,
-                "error": "Não foi possível obter pix_code da SyncPayments."
-            }), 500
+        data = request.get_json()
+        link_id = data.get("link_id")
 
-        print("✅ PIX capturado com sucesso!")
-        return jsonify({"success": True, **resultado})
+        if not link_id:
+            return jsonify({"success": False, "error": "link_id obrigatório"}), 400
+
+        link_sync = f"https://app.syncpayments.com.br/payment-link/{link_id}"
+
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            print("Acessando:", link_sync)
+            page.goto(link_sync, wait_until="networkidle")
+
+            # Espera os inputs aparecerem
+            page.wait_for_selector("input[name='clientName']", timeout=60000)
+            page.wait_for_selector("input[name='clientEmail']", timeout=60000)
+            page.wait_for_selector("input[name='clientCpf']", timeout=60000)
+
+            # Preenche os dados
+            page.fill("input[name='clientName']", "João da Silva")
+            page.fill("input[name='clientEmail']", "teste@example.com")
+            page.fill("input[name='clientCpf']", "12345678909")
+
+            # Clica no botão "Gerar QR Code"
+            page.wait_for_selector("button.sc-a13bbfcf-0.dmUMuK", timeout=60000)
+            page.click("button.sc-a13bbfcf-0.dmUMuK")
+
+            # Espera o campo com o código Pix aparecer
+            page.wait_for_selector("input.sc-7620743a-4.jMaHJs", timeout=60000)
+
+            # Pega o valor do campo (é o código PIX)
+            pix_code = page.get_attribute("input.sc-7620743a-4.jMaHJs", "value")
+
+            browser.close()
+
+            if not pix_code:
+                return jsonify({"success": False, "error": "Campo de PIX encontrado, mas sem valor."}), 400
+
+            return jsonify({"success": True, "pix_code": pix_code})
 
     except Exception as e:
-        print("❌ Erro geral:", e)
+        traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route("/")
-def home():
-    return jsonify({"status": "Servidor SyncPay ativo 🚀"})
-
-
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
-
+    app.run(host="0.0.0.0", port=5000, debug=True)
