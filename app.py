@@ -57,7 +57,7 @@ def gerar_pix():
     if not link_id:
         return jsonify({"success": False, "error": "link_id não informado"}), 400
 
-    link_syncpay = f"https://syncpay.com/pay/{link_id}"
+    link_syncpay = f"https://app.syncpayments.com.br/payment-link{link_id}"
     print(f"🔗 Acessando {link_syncpay}")
 
     try:
@@ -83,3 +83,4 @@ def home():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+
