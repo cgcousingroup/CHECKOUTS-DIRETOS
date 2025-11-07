@@ -1,6 +1,3 @@
 flask
 flask-cors
-playwright
-gunicorn
-# Este comando faz o Playwright baixar os browsers
-playwright install
+playwright[browsers]
