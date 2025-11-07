@@ -1,54 +1,54 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import requests
-from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
+import traceback
+import os
 
 app = Flask(__name__)
-CORS(app)
+CORS(app)  # permite que qualquer front possa chamar a API
 
 @app.route("/gerar_pix", methods=["POST"])
 def gerar_pix():
     try:
         data = request.get_json()
         link_id = data.get("link_id")
+        valor = data.get("valor")  # se quiser enviar valor também
 
         if not link_id:
             return jsonify({"success": False, "error": "link_id obrigatório"}), 400
 
         link_sync = f"https://app.syncpayments.com.br/payment-link/{link_id}"
 
-        # Simula o envio dos dados do cliente
-        payload = {
-            "clientName": "João da Silva",
-            "clientEmail": "teste@example.com",
-            "clientCpf": "12345678909"
-        }
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(link_sync, wait_until="networkidle")
 
-        headers = {
-            "User-Agent": "Mozilla/5.0"
-        }
+            # Preenche os dados
+            page.wait_for_selector("input[name='clientName']", timeout=60000)
+            page.fill("input[name='clientName']", "João da Silva")
+            page.fill("input[name='clientEmail']", "teste@example.com")
+            page.fill("input[name='clientCpf']", "12345678909")
 
-        # Faz o POST ou GET (dependendo de como o SyncPayments espera)
-        response = requests.post(link_sync, data=payload, headers=headers, timeout=30)
-        if response.status_code != 200:
-            return jsonify({"success": False, "error": f"Erro ao acessar link: {response.status_code}"}), 500
+            # Clica no botão "Gerar QR Code"
+            page.wait_for_selector("button.sc-a13bbfcf-0.dmUMuK", timeout=60000)
+            page.click("button.sc-a13bbfcf-0.dmUMuK")
 
-        soup = BeautifulSoup(response.text, "html.parser")
+            # Espera o input do PIX aparecer e pega o valor
+            pix_input = page.wait_for_selector("input.sc-7620743a-4.jMaHJs", timeout=60000)
+            pix_code = pix_input.get_attribute("value")
 
-        # Pega o valor do PIX pelo seletor que você já tinha
-        pix_input = soup.select_one("input.sc-7620743a-4.jMaHJs")
-        if not pix_input or not pix_input.get("value"):
-            return jsonify({"success": False, "error": "Não foi possível encontrar o PIX no HTML"}), 400
+            browser.close()
 
-        pix_code = pix_input.get("value")
+            if not pix_code:
+                return jsonify({"success": False, "error": "Campo de PIX encontrado, mas sem valor."}), 400
 
-        return jsonify({"success": True, "pix_code": pix_code})
+            return jsonify({"success": True, "pix_code": pix_code})
 
     except Exception as e:
+        traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
-
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
-
-
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)
